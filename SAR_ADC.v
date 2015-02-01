@@ -34,7 +34,7 @@ always@(posedge clk, negedge convStart) begin
 	    state <= `STATE_SETBIT;
 	end else if(state == `STATE_SETBIT) begin
 	    // In this state we set a specific bit of the counter and advance
-	    // to the next bit
+	    // to the next state which will check if this bit needs to be set
 	    ctr <= ctr | active_bit; 
 	    state <= `STATE_CHECKBIT;
 	end else if(state == `STATE_CHECKBIT) begin
