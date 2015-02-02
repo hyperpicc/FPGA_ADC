@@ -1,75 +1,92 @@
-module UART_RX( Sample_Clk, Divider, serin, flag, Data_Out);
-
+module UART_RX( Clk, Serin, DataOut, ReadyFlag, ErrorFlag, Reset, SampleFlag );
 `define STATE_LISTENING 0
 `define STATE_VERIFY 1
 `define STATE_DELAY 1
 `define STATE_RECEIVING 2
+`define STATE_VERIFY_STOP 3
 
-input Sample_Clk, serin;
-input [7:0] Divider;
+input Clk;
+input Serin;
+input Reset;
 
-output flag;
-output [7:0] Data_Out;
+output [7:0] DataOut;
+output ReadyFlag;
+output ErrorFlag;
+output SampleFlag;
 
 reg [7:0] dataReg;
-reg [7:0] state;
+reg [7:0] delayCtr;
+reg [7:0] stateMachine;
 reg [7:0] bitCtr;
-reg [8:0] delayReg;
-reg dataRcvd;
+reg readyFlag, errorFlag, sampleFlag;
 
-reg [8:0] delayVal;
+assign DataOut = dataReg;
+assign ReadyFlag = readyFlag;
+assign ErrorFlag = errorFlag;
+assign SampleFlag = sampleFlag;
 
-wire frameStart;
-
-assign Data_Out = dataReg;
-assign flag = dataRcvd;
-assign frameStart = ((state == `STATE_LISTENING) && (~serin));
-
-always @(posedge Sample_Clk ) begin
-    if(state == `STATE_LISTENING && !serin ) begin
-	// We were listening, and now the level has gone low
-	// Before sampling the first bit, we have to wait 3/2 T
-	// and sample at half the first bit to avoid bounce and other stuff
-	state <= `STATE_VERIFY;
-	delayReg <= 9'h00;
-	delayVal <= Divider + (Divider >> 1);
+always@(posedge Clk, negedge Reset) begin
+    if( ~Reset ) begin
+	delayCtr <= 8'h0;
 	dataReg <= 8'h0;
+	stateMachine <= `STATE_LISTENING;
 	bitCtr <= 8'h0;
-	dataRcvd <= 1'b0;
-    // If we were instructed to delay for 3/2 T...
-    end else if( state == `STATE_DELAY ) begin
-	    // Increase the delay timer
-	    delayReg <= delayReg + 1'b1;
-	    // and check if we are at or beyond the delay time
-	    if(delayReg >= delayVal) begin
-		// If so, we receive the first bit and set the delay timer
-		// back to zero
-		delayReg <= 9'h00;
-		delayVal <= Divider;
-		state <= `STATE_RECEIVING;	
+	readyFlag <= 1'b0;
+	errorFlag <= 1'b0;
+    end else begin
+    case(stateMachine)
+	`STATE_LISTENING: begin
+	    sampleFlag <= 1'b0;
+	    if( ~Serin ) begin
+		delayCtr <= 8'h7; // Wait for half a bit
+		stateMachine <= `STATE_VERIFY;
 	    end
-	// We are in the active phase of receiving
-    end else if ( state == `STATE_RECEIVING ) begin
-	// If the timer has been reset to zero, it is time to sample a bit
-	if( delayReg == 9'h00 ) begin
-
-	    bitCtr <= bitCtr + 1'b1;
-	    if(bitCtr <= 8'h8)
-		dataReg <= {serin, dataReg[7:1]};
-	    // Check if we have received all 8 bits
-	    if( bitCtr > 8'h9 ) begin
-		state <= `STATE_LISTENING; 
-		dataRcvd <= 1'b1;
-	    end else begin
-		// If not, increase the delay timer again
-		delayReg <= delayReg + 1'b1;	
-	    end
-	// We increase the timer and check for overflows 
-	end else begin
-	    delayReg <= delayReg + 1'b1;
-	    if(delayReg >= delayVal)
-		delayReg <= 9'h0;
 	end
+	`STATE_VERIFY: begin
+	    delayCtr <= delayCtr - 8'h1;
+	    // If we have reached half the bit, check if it is still low
+	    if( delayCtr == 8'h0 ) begin
+		// If so, wait for an entire bit and start receiving
+		if( ~Serin ) begin
+		    sampleFlag <= 1'b1;
+		    stateMachine <= `STATE_RECEIVING;
+		    readyFlag <= 1'b0;
+		    errorFlag <= 1'b0;
+		    delayCtr <= 8'hf;
+		    bitCtr <= 8'h7;
+		// Else, start listening again
+		end else begin
+		    stateMachine <= `STATE_LISTENING; 
+		    errorFlag <= 1'b1;
+		end
+	    end
+	end
+	`STATE_RECEIVING: begin
+	    sampleFlag <= 1'b0;
+	    delayCtr <= delayCtr - 8'h1;
+	    if( delayCtr == 8'h0 ) begin
+		sampleFlag <= 1'b1;
+		dataReg <= {Serin, dataReg[7:1]};
+		bitCtr <= bitCtr - 8'h1; 
+		delayCtr <= 8'hf;
+		if( bitCtr == 8'h0 ) begin
+		    stateMachine <= `STATE_VERIFY_STOP;
+		end
+	    end
+	end
+	`STATE_VERIFY_STOP: begin
+	    sampleFlag <= 1'b0;
+	    delayCtr <= delayCtr - 8'h1;
+	    if(delayCtr == 8'h0) begin
+		sampleFlag <= 1'b1;
+		if( Serin == 1'b1 )
+		    readyFlag <= 1'b1;
+		else
+		    errorFlag <= 1'b1;
+		stateMachine <= `STATE_LISTENING;
+	    end
+	end
+    endcase
     end
 end
 
