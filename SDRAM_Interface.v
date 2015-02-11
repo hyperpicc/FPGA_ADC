@@ -21,7 +21,7 @@ reg [1:0] bank;
 reg [7:0] state;
 reg AckReg;
 
-assign DRAM_CLK = Clk;
+assign DRAM_CLK = ~Clk;
 assign Busy = (state != `STATE_IDLE);
 assign Ack = AckReg;
 
