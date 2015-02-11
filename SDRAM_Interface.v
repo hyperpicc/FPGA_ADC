@@ -21,8 +21,19 @@ reg [1:0] bank;
 reg [7:0] state;
 reg AckReg;
 
+/*
+ * We change pinstates on the rising edge of the clock, but DRAM is looking
+ * for stable input at these edges. Therefore, we invert the DRAM clock so our
+ * posedge is its negedge and vice versa.
+ */
 assign DRAM_CLK = ~Clk;
+/*
+ * If the state is not the IDLE state, we are busy...
+ */
 assign Busy = (state != `STATE_IDLE);
+/*
+ * Set this flag when we acknowledge a command (write or read) from the user
+ */
 assign Ack = AckReg;
 
 always @(posedge Clk) begin
