@@ -15,11 +15,12 @@ output [12:0]DRAM_ADDR;
 inout [15:0]DRAM_DQ;
 output DRAM_BA_0, DRAM_BA_1, DRAM_LDQM, DRAM_UDQM, DRAM_WE_N, DRAM_CAS_N, DRAM_RAS_N, DRAM_CS_N, DRAM_CLK, DRAM_CKE;
 
-reg [11:0] row;
-reg [7:0] col;
-reg [1:0] bank;
-reg [7:0] state;
-reg AckReg;
+reg [15:0] shadowData;	// Local copy of the data to write
+reg [11:0] row;		// The row part of the address
+reg [7:0] col;		// The column part of the address
+reg [1:0] bank;		// The bank of the SDRAM
+reg [7:0] state;	// The state-machine register
+reg AckReg;		// Register to hold the acknowledgement of command
 
 /*
  * We change pinstates on the rising edge of the clock, but DRAM is looking
@@ -42,6 +43,7 @@ always @(posedge Clk) begin
 	    AckReg <= 1'b0;
 	    if(Req) begin
 		AckReg <= 1'b1;
+		shadowData <= Data;
 		row <= Address[11:0];
 		col <= Address[19:12];
 		bank <= Address[21:20];
