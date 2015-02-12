@@ -22,7 +22,7 @@ module SDRAM_Interface( Clk, // The 100 MHz clock, internal logic on rising edge
 `define STATE_INIT 255
 `define STATE_PRECHARGE_ALL 254
 
-`define REFRESH_VAL 32'h5B8D80
+`define REFRESH_VAL 32'h5B8D80 // A little less than 64ms @ 100MHz
 
 input Clk, Req, WnR, Reset;
 inout [15:0]Data;
@@ -67,6 +67,8 @@ end
 always @(posedge Clk) begin
     if(Reset) begin
 	state <= `STATE_INIT;
+	ErrReg <= 1'b0;
+	refreshCtr <= `REFRESH_VAL;
     end else begin
     case(state)
 	`STATE_IDLE: begin
