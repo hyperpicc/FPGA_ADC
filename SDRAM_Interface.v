@@ -128,6 +128,8 @@ always @(posedge Clk) begin
 	    DRAM_WE_N	<= 1'b1;
 
 	    if(timeCtr ==  16'h0) begin
+		// After waiting long enough, we can now issue the precharge
+		// all command 
 		state <= `STATE_INIT_ISSUE_PCHG
 	    end else
 		timeCtr <= timeCtr - 16'h1;
