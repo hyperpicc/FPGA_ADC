@@ -91,7 +91,7 @@ always @(posedge Clk) begin
 	    // Asserting everything high/idle, we wait for 250us 
 	    if( timeCtr == 16'h0000 ) begin
 		state	<= `STATE_INIT_PCHGA; // Start to precharge all the banks
-		row	<= 12'hFFF;
+		row	<= 12'h100;
 	    end else begin
 		timeCtr <= timeCtr - 16'b1;
 	    end
@@ -115,7 +115,7 @@ always @(posedge Clk) begin
 		    // If so, mark one down (we need eight in total)
 		    initCtr <= initCtr - 4'h1;
 		    // Reset the row to the starting point
-		    row	    <= 12'hFFF;
+		    row	    <= 12'h100;
 		end else
 		    // It wasn't the last row, simply decrease
 		    row <= row - 12'h1;
@@ -161,8 +161,19 @@ always @(posedge Clk) begin
 	    end else
 		timeCtr <= timeCtr - 16'h1;
 	end
+	`STATE_INIT_CMD: begin
+	    // "SET MODE" command
+	    DRAM_RAS_N	<= 1'b0;
+	    DRAM_CAS_N	<= 1'b0;
+	    DRAM_WE_N	<= 1'b0;
+	    DRAM_ADDR	<= {7'h0, 3'b010, 4'h0};    // CAS-2 delay
+	    state	<= `STATE_IDLE;
+	end
 	`STATE_IDLE: begin
 	    Ack <= 1'b0;
+	    DRAM_RAS_N	<= 1'b1;
+	    DRAM_CAS_N	<= 1'b1;
+	    DRAM_WE_N	<= 1'b1;
 	    if( refreshCtr == 32'h0 ) begin
 		//state <= `STATE_PRECHARGE_ALL;
 		state <= `STATE_IDLE;
