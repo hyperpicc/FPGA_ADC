@@ -83,7 +83,7 @@ always @(posedge Clk) begin
 	initCtr	    <= 4'h8;
 	DRAM_RAS_N  <= 1'b1;
 	DRAM_CAS_N  <= 1'b1;
-	DRAM_WE_N   <= 1'b0;
+	DRAM_WE_N   <= 1'b1;
     end else begin
     case(state)
 	`STATE_INIT: begin
