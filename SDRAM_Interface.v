@@ -15,7 +15,7 @@ module SDRAM_Interface( input Clk, // The 100 MHz clock, internal logic on risin
     output reg Err,	    // Output: Error flag, perhaps the state machine entered an unspecified state
     // The following are input/outputs to the SDRAM chip, simple wire them
     // through
-    output reg [12:0]DRAM_ADDR, 
+    output reg [11:0]DRAM_ADDR, 
     inout [15:0]DRAM_DQ, 
     output reg DRAM_BA_0, 
     output reg DRAM_BA_1, 
@@ -101,7 +101,7 @@ always @(posedge Clk) begin
 		DRAM_RAS_N  <= 1'b0;
 		DRAM_CAS_N  <= 1'b1;
 		DRAM_WE_N   <= 1'b1;
-		DRAM_ADDR   <= {4'b0000, row};
+		DRAM_ADDR   <= row;
 		state	    <= `STATE_INIT_RAS_TIMEOUT;
 		timeCtr	    <= `tRAS;
 		row	    <= row - 12'h1;
