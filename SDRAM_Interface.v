@@ -35,6 +35,7 @@ module SDRAM_Interface( input Clk, // The 100 MHz clock, internal logic on risin
 `define STATE_INIT_PCHGA	    254	    // Precharge all banks in the init routine
 `define STATE_INIT_RAS_TIMEOUT	    253	    // Wait a while after opening a row (tRAS timeout)
 `define STATE_INIT_TRP_TIMEOUT	    252
+`define STATE_INIT_CMD		    251
 //`define STATE_PRECHARGE_ALL 20
 
 `define REFRESH_TIME	32'h810000	// A little less than 64ms @ 133MHz
@@ -44,13 +45,14 @@ module SDRAM_Interface( input Clk, // The 100 MHz clock, internal logic on risin
 `define tRP		16'h3		// t_PD (row precharge time)
 
 
-reg [15:0] shadowData;	// Local copy of the data to write
-reg [11:0] row;		// The row part of the address
-reg [7:0] col;		// The column part of the address
-reg [1:0] bank;		// The bank of the SDRAM
-reg [7:0] state;	// The state-machine register
-reg [31:0] refreshCtr;	// This counts backward, when zero a global refresh is necessary
-reg [15:0] timeCtr;	// This counts backwards to time the initialization time (PLL lock for SDRAM?)
+reg [15:0]  shadowData;	// Local copy of the data to write
+reg [11:0]  row;	// The row part of the address
+reg [7:0]   col;	// The column part of the address
+reg [1:0]   bank;	// The bank of the SDRAM
+reg [7:0]   state;	// The state-machine register
+reg [31:0]  refreshCtr;	// This counts backward, when zero a global refresh is necessary
+reg [15:0]  timeCtr;	// This counts backwards to time the initialization time (PLL lock for SDRAM?)
+reg [3:0]   initCtr;	// This counts the number of global refreshes to go (start from 8)
 
 // We don't need these for the DE0 SDRAM, else... mod my code ;-)
 assign DRAM_CKE = 1'b1;
@@ -78,6 +80,7 @@ always @(posedge Clk) begin
 	Err	    <= 1'b0;
 	refreshCtr  <= `REFRESH_TIME;
 	timeCtr	    <= `INIT_TIME;
+	initCtr	    <= 4'h8;
 	DRAM_RAS_N  <= 1'b1;
 	DRAM_CAS_N  <= 1'b1;
 	DRAM_WE_N   <= 1'b0;
@@ -94,40 +97,62 @@ always @(posedge Clk) begin
 	end
 	// In this state we first open each row to successively precharge it
 	`STATE_INIT_PCHGA: begin
-	    if( row == 12'h0 ) begin
-		state	    <= `STATE_IDLE;		
+	    // If we did it 8 times, we can set up the command register
+	    if( initCtr == 4'h0 ) begin
+		state <= `STATE_INIT_CMD;
 	    end else begin
 		// This is the "OPEN ROW" command
 		DRAM_RAS_N  <= 1'b0;
 		DRAM_CAS_N  <= 1'b1;
 		DRAM_WE_N   <= 1'b1;
 		DRAM_ADDR   <= row;
+		// Wait for a time t_RAS
 		state	    <= `STATE_INIT_RAS_TIMEOUT;
 		timeCtr	    <= `tRAS;
-		row	    <= row - 12'h1;
+		// Check if this was the last row of a series
+		if( row == 12'h000 ) begin
+		    // If so, mark one down (we need eight in total)
+		    initCtr <= initCtr - 4'h1;
+		    // Reset the row to the starting point
+		    row	    <= 12'hFFF;
+		end else
+		    // It wasn't the last row, simply decrease
+		    row <= row - 12'h1;
 	    end
 	end
+	// This state simply sets the NOP command and waits for time t_RAS
 	`STATE_INIT_RAS_TIMEOUT: begin
+	    // "NOP" command
+	    DRAM_RAS_N	<= 1'b1;
+	    DRAM_CAS_N	<= 1'b1;
+	    DRAM_WE_N	<= 1'b1;
+
 	    if(timeCtr ==  16'h0) begin
 		state <= `STATE_INIT_ISSUE_PCHG
 	    end else
 		timeCtr <= timeCtr - 16'h1;
 	end
+	// This state issues the "PRECHARGE ALL BANKS" command
 	`STATE_INIT_ISSUE_PCHG: begin
 	    DRAM_ADDR[10]   <= 1'b1; // Precharge all banks, makes life just a little easier
 	    // This is the precharge all command
 	    DRAM_RAS_N	    <= 1'b0;
 	    DRAM_CAS_N	    <= 1'b1;
 	    DRAM_WE_N	    <= 1'b0;
+	    // Wait for a time t_RP
 	    state	    <= `STATE_INIT_TRP_TIMEOUT;
 	    timeCtr	    <= `tRP;
 	end
+	// This state waits for a time t_RP, leaving the command untouched
+	// (allowed as by the datasheet)
 	`STATE_INIT_TRP_TIMEOUT: begin
 	    if(timeCtr == 16'h0) begin
+		// If the time has expired we return the state that counts
+		// down rows and checks if they need to be precharged
 		state <= `STATE_INIT_PCHGA;
 	    end else
 		timeCtr <= timeCtr - 16'h1;
-	end:
+	end
 	`STATE_IDLE: begin
 	    Ack <= 1'b0;
 	    if( refreshCtr == 32'h0 ) begin
