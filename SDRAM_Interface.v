@@ -34,12 +34,14 @@ module SDRAM_Interface( input Clk, // The 100 MHz clock, internal logic on risin
 `define STATE_INIT		    255	    // First phase of the init, wait for 250us with no command
 `define STATE_INIT_PCHGA	    254	    // Precharge all banks in the init routine
 `define STATE_INIT_RAS_TIMEOUT	    253	    // Wait a while after opening a row (tRAS timeout)
+`define STATE_INIT_TRP_TIMEOUT	    252
 //`define STATE_PRECHARGE_ALL 20
 
 `define REFRESH_TIME	32'h810000	// A little less than 64ms @ 133MHz
 `define INIT_TIME	16'h8000	// A little more than 250us @ 133MHz
 
 `define tRAS		16'h7		// t_RAS @ 133MHz
+`define tRP		16'h3		// t_PD (row precharge time)
 
 
 reg [15:0] shadowData;	// Local copy of the data to write
@@ -93,14 +95,16 @@ always @(posedge Clk) begin
 	// In this state we first open each row to successively precharge it
 	`STATE_INIT_PCHGA: begin
 	    if( row == 12'h0 ) begin
-	
+		state	    <= `STATE_IDLE;		
 	    end else begin
+		// This is the "OPEN ROW" command
 		DRAM_RAS_N  <= 1'b0;
 		DRAM_CAS_N  <= 1'b1;
 		DRAM_WE_N   <= 1'b1;
-		DRAM_ADDR   <= row;
+		DRAM_ADDR   <= {4'b0000, row};
 		state	    <= `STATE_INIT_RAS_TIMEOUT;
 		timeCtr	    <= `tRAS;
+		row	    <= row - 12'h1;
 	    end
 	end
 	`STATE_INIT_RAS_TIMEOUT: begin
@@ -110,8 +114,20 @@ always @(posedge Clk) begin
 		timeCtr <= timeCtr - 16'h1;
 	end
 	`STATE_INIT_ISSUE_PCHG: begin
-
+	    DRAM_ADDR[10]   <= 1'b1; // Precharge all banks, makes life just a little easier
+	    // This is the precharge all command
+	    DRAM_RAS_N	    <= 1'b0;
+	    DRAM_CAS_N	    <= 1'b1;
+	    DRAM_WE_N	    <= 1'b0;
+	    state	    <= `STATE_INIT_TRP_TIMEOUT;
+	    timeCtr	    <= `tRP;
 	end
+	`STATE_INIT_TRP_TIMEOUT: begin
+	    if(timeCtr == 16'h0) begin
+		state <= `STATE_INIT_PCHGA;
+	    end else
+		timeCtr <= timeCtr - 16'h1;
+	end:
 	`STATE_IDLE: begin
 	    Ack <= 1'b0;
 	    if( refreshCtr == 32'h0 ) begin
