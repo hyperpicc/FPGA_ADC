@@ -47,6 +47,7 @@ module SDRAM_Interface( input Clk, // The 100 MHz clock, internal logic on risin
 
 
 reg [15:0]  shadowData;	// Local copy of the data to write
+reg [15:0]  sdramData;	// At each negedge, this will clock in the data coming from the SDRAM
 reg [11:0]  row;	// The row part of the address
 reg [7:0]   col;	// The column part of the address
 reg [1:0]   bank;	// The bank of the SDRAM
@@ -73,6 +74,17 @@ assign Busy = (state != `STATE_IDLE);
 always @(posedge Clk) begin
     if( refreshCtr != 0 )
 	refreshCtr <= refreshCtr - 32'h1;
+end
+
+/*
+ * The SDRAM clock has been shifted by T/2 (i.e. inverted) thus data out of
+ * the SDRAM is stable at negedge. However, our state machine only clocks on
+ * posedges (to have commands and data stable for the SDRAM). For writing this
+ * is OK, but to read, we need to read at the negedge (stable data out from
+ * SDRAM). Most of the time, this will contain jibberish.
+ */
+always @(negedge Clk) begin
+    sdramData <= DRAM_DQ[15:0];
 end
 
 always @(posedge Clk) begin
